@@ -30,6 +30,26 @@ class NetworkResolutionError(Exception):
     pass
 
 
+def fetch_company_name(code: str) -> str | None:
+    base_url = f"https://irbank.net/{code}"
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=0))
+    session.mount("http://", HTTPAdapter(max_retries=0))
+    try:
+        soup = _fetch_soup(session, base_url)
+        title_node = soup.select_one("h1")
+        if not title_node:
+            LOGGER.info("company name not found (no h1) code=%s", code)
+            return None
+        text = title_node.get_text(" ", strip=True)
+        match = re.match(r"^\d+\s+(.+)$", text)
+        if match:
+            return match.group(1).strip()
+        return text.strip() or None
+    finally:
+        session.close()
+
+
 def _fetch_soup(session: requests.Session, url: str) -> BeautifulSoup:
     try:
         response = session.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)

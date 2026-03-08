@@ -1,4 +1,5 @@
 import html
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -12,12 +13,13 @@ def _render_overview_page(rows: list[dict[str, str]]) -> str:
         row_html += (
             "<tr>"
             f"<td>{html.escape(row['code'])}</td>"
+            f"<td>{html.escape(row['company'])}</td>"
             f"<td>{html.escape(row['updated'])}</td>"
             f"<td><a href=\"{html.escape(row['href'])}\">ページを開く</a></td>"
             "</tr>"
         )
     if not row_html:
-        row_html = '<tr><td colspan="3">まだページがありません</td></tr>'
+        row_html = '<tr><td colspan="4">まだページがありません</td></tr>'
 
     return f"""<!doctype html>
 <html lang="ja">
@@ -100,6 +102,7 @@ def _render_overview_page(rows: list[dict[str, str]]) -> str:
         <thead>
           <tr>
             <th>銘柄コード</th>
+            <th>会社名</th>
             <th>更新日時 (JST)</th>
             <th>リンク</th>
           </tr>
@@ -115,13 +118,26 @@ def _render_overview_page(rows: list[dict[str, str]]) -> str:
 """
 
 
-def publish_report_to_docs(code: str, report_path: Path) -> Path:
+def _extract_company_name_from_report(index_file: Path) -> str:
+    try:
+        text = index_file.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    match = re.search(r"IR Bank Analysis Report \(\d+\s*-\s*([^)]+)\)", text)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def publish_report_to_docs(code: str, report_path: Path, company_name: str | None = None) -> Path:
     docs_root = Path("docs")
     code_dir = docs_root / "codes" / code
     code_dir.mkdir(parents=True, exist_ok=True)
 
     target_path = code_dir / "index.html"
     shutil.copyfile(report_path, target_path)
+    if company_name:
+        (code_dir / "company.txt").write_text(company_name, encoding="utf-8")
 
     rows: list[dict[str, str]] = []
     codes_root = docs_root / "codes"
@@ -133,9 +149,15 @@ def publish_report_to_docs(code: str, report_path: Path) -> Path:
             if not index_file.exists():
                 continue
             updated = datetime.fromtimestamp(index_file.stat().st_mtime, tz=ZoneInfo("Asia/Tokyo"))
+            company_file = child / "company.txt"
+            if company_file.exists():
+                company = company_file.read_text(encoding="utf-8").strip()
+            else:
+                company = _extract_company_name_from_report(index_file)
             rows.append(
                 {
                     "code": child.name,
+                    "company": company,
                     "updated": updated.strftime("%Y-%m-%d %H:%M:%S"),
                     "href": f"./codes/{child.name}/",
                 }

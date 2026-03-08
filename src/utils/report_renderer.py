@@ -73,17 +73,22 @@ def _render_result_cards(result: dict[str, Any]) -> str:
 
 
 # 結果データを見やすいHTMLレポート(整形表示 + Raw JSON)として生成する。
-def render_html_report(code: str, result: dict) -> str:
+def render_html_report(code: str, result: dict, company_name: str | None = None) -> str:
     rendered_cards = _render_result_cards(result)
     escaped_json = html.escape(json.dumps(result, ensure_ascii=False, indent=2))
     generated_at = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M:%S %Z")
+    title_target = (
+        f"{html.escape(code)} - {html.escape(company_name)}"
+        if company_name
+        else html.escape(code)
+    )
 
     return f"""<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>IR Bank Analysis Report ({html.escape(code)})</title>
+  <title>IR Bank Analysis Report ({title_target})</title>
   <style>
     :root {{
       --bg: #f5f7fb;
@@ -189,7 +194,7 @@ def render_html_report(code: str, result: dict) -> str:
 <body>
   <div class="wrap">
     <section class="card">
-      <h1>IR Bank Analysis Report ({html.escape(code)})</h1>
+      <h1>IR Bank Analysis Report ({title_target})</h1>
       <p class="meta">Generated at: {generated_at}</p>
     </section>
     <section class="card">
