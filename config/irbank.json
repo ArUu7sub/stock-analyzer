@@ -1,5 +1,5 @@
 {
-  "in": "7203",
+  "in": "4272",
   "extractors": {
     "売上高": {
       "type": "performance_series",
@@ -70,6 +70,6 @@
     },
     "株価評価": ["EPS", "EPS予想", "PER", "PER予想", "PBR", "配当利回り", "自己資本比率"]
   },
-  "allow_null": [],
+  "allow_null": ["売上高", "営業利益", "当期純利益"],
   "save": "data"
 }
