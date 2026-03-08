@@ -1,0 +1,75 @@
+{
+  "in": "7203",
+  "extractors": {
+    "売上高": {
+      "type": "performance_series",
+      "metric": "売上高",
+      "years": 3
+    },
+    "営業利益": {
+      "type": "performance_series",
+      "metric": "営業利益",
+      "years": 3
+    },
+    "当期純利益": {
+      "type": "performance_series",
+      "metric": "当期純利益",
+      "years": 3
+    },
+    "ROE": {
+      "type": "label",
+      "labels": ["ROE（連）"]
+    },
+    "ROE予想": {
+      "type": "label",
+      "labels": ["ROE（連）予"]
+    },
+    "ROA": {
+      "type": "label",
+      "labels": ["ROA（連）"]
+    },
+    "ROA予想": {
+      "type": "label",
+      "labels": ["ROA（連）予"]
+    },
+    "EPS": {
+      "type": "label",
+      "labels": ["EPS（連）"]
+    },
+    "EPS予想": {
+      "type": "label",
+      "labels": ["EPS（連）予"]
+    },
+    "PER": {
+      "type": "label",
+      "labels": ["PER（連）"]
+    },
+    "PER予想": {
+      "type": "label",
+      "labels": ["PER（連）予"]
+    },
+    "PBR": {
+      "type": "label",
+      "labels": ["PBR（連）"]
+    },
+    "配当利回り": {
+      "type": "label",
+      "labels": ["配当利回り予"]
+    },
+    "自己資本比率": {
+      "type": "label",
+      "labels": ["株主資本比率（連）"]
+    }
+  },
+  "out": {
+    "財務分析": {
+      "利益": ["売上高", "営業利益", "当期純利益"],
+      "収益性": ["ROE", "ROE予想", "ROA", "ROA予想"],
+      "安全性": [],
+      "成長性": []
+    },
+    "株価評価": ["EPS", "EPS予想", "PER", "PER予想", "PBR", "配当利回り", "自己資本比率"]
+  },
+  "allow_null": [],
+  "save": "data"
+}
