@@ -13,6 +13,7 @@ from src.scrapers.irbank_scraper import (
     NetworkResolutionError,
     scrape_irbank,
 )
+from src.utils.docs_publisher import publish_report_to_docs
 from src.utils.report_renderer import render_html_report
 
 
@@ -115,9 +116,12 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     html_report = render_html_report(str(code), result)
     output_path.write_text(html_report, encoding="utf-8")
+    docs_page_path = publish_report_to_docs(str(code), output_path)
     logging.getLogger(__name__).info("saved report path=%s", output_path)
+    logging.getLogger(__name__).info("published docs path=%s", docs_page_path)
     print(f"log: {log_path}")
     print(f"saved: {output_path}")
+    print(f"docs: {docs_page_path}")
 
 
 if __name__ == "__main__":

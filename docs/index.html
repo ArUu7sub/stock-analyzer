@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Analyzer Docs</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #13202f;
+      --muted: #56708b;
+      --line: #d8e2ee;
+      --accent: #0a5fa8;
+    }
+    body {
+      margin: 0;
+      font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: linear-gradient(180deg, #eef4fb 0%, #f8fbff 100%);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 20px auto;
+      padding: 0 14px 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 6px 16px rgba(9, 30, 66, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th {
+      background: #f7faff;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .hint {
+      margin-top: 12px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <h1>Stock Analyzer Reports</h1>
+      <p>銘柄ごとの最新レポートページ一覧です。</p>
+      <p class="hint">最終更新: 2026-03-08 11:47:11 JST</p>
+    </section>
+    <section class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>銘柄コード</th>
+            <th>更新日時 (JST)</th>
+            <th>リンク</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>7203</td><td>2026-03-08 11:47:11</td><td><a href="./codes/7203/">ページを開く</a></td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>
