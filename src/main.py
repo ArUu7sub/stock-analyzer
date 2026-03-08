@@ -11,6 +11,7 @@ from src.scrapers.irbank_scraper import (
     InvalidExtractorConfigError,
     MissingFieldError,
     NetworkResolutionError,
+    fetch_company_name,
     scrape_irbank,
 )
 from src.utils.docs_publisher import publish_report_to_docs
@@ -112,11 +113,20 @@ def main() -> None:
         print(f"error: スクレイピングに失敗しました: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    company_name: str | None = None
+    try:
+        company_name = fetch_company_name(str(code))
+        logging.getLogger(__name__).info("company name=%s code=%s", company_name, code)
+    except Exception:
+        logging.getLogger(__name__).warning("failed to fetch company name code=%s", code)
+
     output_path = resolve_save_path(args.save or config.get("save"), str(code))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    html_report = render_html_report(str(code), result)
+    html_report = render_html_report(str(code), result, company_name=company_name)
     output_path.write_text(html_report, encoding="utf-8")
-    docs_page_path = publish_report_to_docs(str(code), output_path)
+    docs_page_path = publish_report_to_docs(
+        str(code), output_path, company_name=company_name
+    )
     logging.getLogger(__name__).info("saved report path=%s", output_path)
     logging.getLogger(__name__).info("published docs path=%s", docs_page_path)
     print(f"log: {log_path}")
