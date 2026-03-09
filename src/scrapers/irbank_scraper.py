@@ -30,6 +30,45 @@ class NetworkResolutionError(Exception):
     pass
 
 
+def _normalize_link_text(link: Any) -> str:
+    return str(link.get_text(" ", strip=True)).replace(" ", "")
+
+
+def _find_performance_url(base_soup: BeautifulSoup) -> str | None:
+    for link in base_soup.select("a[href]"):
+        href = str(link.get("href", "")).strip()
+        title = str(link.get("title", "")).strip()
+        text = _normalize_link_text(link)
+        if not href:
+            continue
+        if title == "会社業績" or text == "業績" or href.endswith("/pl"):
+            return urljoin("https://irbank.net", href)
+    return None
+
+
+def _find_settlement_url(base_soup: BeautifulSoup) -> str | None:
+    for link in base_soup.select("a[href]"):
+        href = str(link.get("href", "")).strip()
+        title = str(link.get("title", "")).strip()
+        text = _normalize_link_text(link)
+        if not href:
+            continue
+        if (title == "決算まとめ" or text == "決算") and href.endswith("/results"):
+            return urljoin("https://irbank.net", href)
+    return None
+
+
+def _find_related_urls(base_soup: BeautifulSoup) -> list[tuple[str, str]]:
+    related: list[tuple[str, str]] = []
+    performance_url = _find_performance_url(base_soup)
+    if performance_url:
+        related.append(("performance", performance_url))
+    settlement_url = _find_settlement_url(base_soup)
+    if settlement_url and settlement_url != performance_url:
+        related.append(("settlement", settlement_url))
+    return related
+
+
 def fetch_company_name(code: str) -> str | None:
     base_url = f"https://irbank.net/{code}"
     session = requests.Session()
@@ -107,6 +146,114 @@ def _extract_metric_series_from_performance_page(
                 return series
         return series
     return []
+
+
+def _extract_metric_series_from_settlement_page(
+    settlement_soup: BeautifulSoup,
+    metric: str,
+    limit: int,
+) -> list[dict[str, str]]:
+    # 決算ページは graph 配下以外にも c_* ブロックで指標が並ぶため、両方走査する。
+    for box in settlement_soup.select("div#graph > div, div[id^='c_']"):
+        h2 = box.find("h2")
+        if not h2:
+            continue
+        title = h2.get_text("", strip=True)
+        if not (title == metric or title.startswith(metric)):
+            continue
+
+        dl = box.find("dl")
+        if not dl:
+            continue
+
+        dts = dl.find_all("dt", recursive=False)
+        dds = dl.find_all("dd", recursive=False)
+        series: list[dict[str, str]] = []
+        for dt, dd in reversed(list(zip(dts, dds, strict=False))):
+            dt_text = dt.get_text("", strip=True)
+            year_match = re.search(r"\d{4}/\d{1,2}", dt_text)
+            if not year_match:
+                continue
+            value_node = dd.select_one("span.text")
+            if not value_node:
+                continue
+            value_text = value_node.get_text(strip=True)
+            if value_text == "-":
+                continue
+            series.append(
+                {
+                    "年度": year_match.group(),
+                    "区分": "予想" if "予" in dt_text else "実績",
+                    "値": value_text,
+                }
+            )
+            if len(series) >= limit:
+                return series
+        return series
+    return []
+
+
+def _parse_japanese_amount_to_number(text: str) -> float | None:
+    cleaned = str(text).replace(",", "").replace(" ", "")
+    if not cleaned or cleaned == "-":
+        return None
+
+    total = 0.0
+    matched = False
+    for value_text, unit in re.findall(r"([+-]?\d+(?:\.\d+)?)(兆|億|万)", cleaned):
+        value = float(value_text)
+        if unit == "兆":
+            total += value * 1_0000_0000_0000
+        elif unit == "億":
+            total += value * 1_0000_0000
+        elif unit == "万":
+            total += value * 1_0000
+        matched = True
+
+    if matched:
+        return total
+
+    number_match = re.search(r"[+-]?\d+(?:\.\d+)?", cleaned)
+    if not number_match:
+        return None
+    return float(number_match.group())
+
+
+def _calculate_series_ratio(
+    numerator_series: list[dict[str, str]],
+    denominator_series: list[dict[str, str]],
+    as_percent: bool = False,
+    decimals: int = 2,
+    suffix: str | None = None,
+) -> list[dict[str, str]]:
+    denominator_map: dict[tuple[str, str], float] = {}
+    for row in denominator_series:
+        year = str(row.get("年度", ""))
+        kind = str(row.get("区分", ""))
+        value = _parse_japanese_amount_to_number(str(row.get("値", "")))
+        if not year or value is None or value == 0:
+            continue
+        denominator_map[(year, kind)] = value
+
+    results: list[dict[str, str]] = []
+    for row in numerator_series:
+        year = str(row.get("年度", ""))
+        kind = str(row.get("区分", ""))
+        numerator = _parse_japanese_amount_to_number(str(row.get("値", "")))
+        denominator = denominator_map.get((year, kind))
+        if not year or numerator is None or denominator is None or denominator == 0:
+            continue
+        ratio = numerator / denominator
+        shown = ratio * 100 if as_percent else ratio
+        unit = suffix if suffix is not None else ("%" if as_percent else "")
+        results.append(
+            {
+                "年度": year,
+                "区分": kind,
+                "値": f"{shown:.{decimals}f}{unit}",
+            }
+        )
+    return results
 
 
 # out定義(辞書/配列/文字列)から、実際に必要な項目名を再帰的に収集する。
@@ -201,6 +348,65 @@ def _resolve_field_value(
                 performance_soup=performance_soup, metric=metric, limit=years
             )
             value = series if series else None
+    elif rule_type == "safty_series":
+        metric = rule.get("metric")
+        if not isinstance(metric, str) or not metric:
+            visiting.remove(field_name)
+            raise InvalidExtractorConfigError(
+                f"extractors.{field_name}.metric は string で指定してください。"
+            )
+        years = rule.get("years", 3)
+        if not isinstance(years, int) or years <= 0:
+            visiting.remove(field_name)
+            raise InvalidExtractorConfigError(
+                f"extractors.{field_name}.years は 1 以上の整数で指定してください。"
+            )
+        settlement_soup = context.get("settlement_soup")
+        if settlement_soup is None:
+            value = None
+        else:
+            series = _extract_metric_series_from_settlement_page(
+                settlement_soup=settlement_soup, metric=metric, limit=years
+            )
+            value = series if series else None
+    elif rule_type == "calculated_series":
+        numerator_field = rule.get("numerator_field")
+        denominator_field = rule.get("denominator_field")
+        if not isinstance(numerator_field, str) or not numerator_field:
+            visiting.remove(field_name)
+            raise InvalidExtractorConfigError(
+                f"extractors.{field_name}.numerator_field は string で指定してください。"
+            )
+        if not isinstance(denominator_field, str) or not denominator_field:
+            visiting.remove(field_name)
+            raise InvalidExtractorConfigError(
+                f"extractors.{field_name}.denominator_field は string で指定してください。"
+            )
+        as_percent = bool(rule.get("as_percent", False))
+        decimals = int(rule.get("decimals", 2))
+        suffix = rule.get("suffix")
+        if suffix is not None:
+            suffix = str(suffix)
+
+        numerator_series = _resolve_field_value(
+            numerator_field, lines, extractors, cache, visiting, context
+        )
+        denominator_series = _resolve_field_value(
+            denominator_field, lines, extractors, cache, visiting, context
+        )
+        if not isinstance(numerator_series, list) or not isinstance(
+            denominator_series, list
+        ):
+            value = None
+        else:
+            series = _calculate_series_ratio(
+                numerator_series=numerator_series,
+                denominator_series=denominator_series,
+                as_percent=as_percent,
+                decimals=decimals,
+                suffix=suffix,
+            )
+            value = series if series else None
     else:
         visiting.remove(field_name)
         raise InvalidExtractorConfigError(
@@ -222,37 +428,33 @@ def fetch_page_lines(code: str) -> list[str]:
 
     try:
         soup = _fetch_soup(session, base_url)
-        lines = [line.strip() for line in soup.get_text("\n").splitlines() if line.strip()]
+        lines = [
+            line.strip() for line in soup.get_text("\n").splitlines() if line.strip()
+        ]
         LOGGER.info("fetched base page lines count=%s code=%s", len(lines), code)
 
-        performance_url: str | None = None
-        for link in soup.select("a[href]"):
-            href = str(link.get("href", "")).strip()
-            title = str(link.get("title", "")).strip()
-            text = link.get_text(strip=True)
-            if not href:
-                continue
-            if title == "会社業績" or text == "業績" or href.endswith("/pl"):
-                performance_url = urljoin("https://irbank.net", href)
-                break
-
-        if not performance_url:
-            LOGGER.info("no performance link found on base page code=%s", code)
+        related_urls = _find_related_urls(soup)
+        if not related_urls:
+            LOGGER.info("no related page links found on base page code=%s", code)
             return lines
 
-        performance_soup = _fetch_soup(session, performance_url)
-        performance_lines = [
-            line.strip()
-            for line in performance_soup.get_text("\n").splitlines()
-            if line.strip()
-        ]
-        LOGGER.info(
-            "fetched performance page url=%s lines count=%s code=%s",
-            performance_url,
-            len(performance_lines),
-            code,
-        )
-        return lines + performance_lines
+        merged_lines = list(lines)
+        for kind, page_url in related_urls:
+            page_soup = _fetch_soup(session, page_url)
+            page_lines = [
+                line.strip()
+                for line in page_soup.get_text("\n").splitlines()
+                if line.strip()
+            ]
+            LOGGER.info(
+                "fetched %s page url=%s lines count=%s code=%s",
+                kind,
+                page_url,
+                len(page_lines),
+                code,
+            )
+            merged_lines.extend(page_lines)
+        return merged_lines
     finally:
         session.close()
 
@@ -264,21 +466,30 @@ def fetch_performance_soup(code: str) -> BeautifulSoup | None:
     session.mount("http://", HTTPAdapter(max_retries=0))
     try:
         base_soup = _fetch_soup(session, base_url)
-        performance_url: str | None = None
-        for link in base_soup.select("a[href]"):
-            href = str(link.get("href", "")).strip()
-            title = str(link.get("title", "")).strip()
-            text = link.get_text(strip=True)
-            if not href:
-                continue
-            if title == "会社業績" or text == "業績" or href.endswith("/pl"):
-                performance_url = urljoin("https://irbank.net", href)
-                break
+        performance_url = _find_performance_url(base_soup)
         if not performance_url:
             LOGGER.info("performance page link not found code=%s", code)
             return None
         soup = _fetch_soup(session, performance_url)
         LOGGER.info("fetched performance soup url=%s code=%s", performance_url, code)
+        return soup
+    finally:
+        session.close()
+
+
+def fetch_settlement_soup(code: str) -> BeautifulSoup | None:
+    base_url = f"https://irbank.net/{code}"
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=0))
+    session.mount("http://", HTTPAdapter(max_retries=0))
+    try:
+        base_soup = _fetch_soup(session, base_url)
+        settlement_url = _find_settlement_url(base_soup)
+        if not settlement_url:
+            LOGGER.info("settlement page link not found code=%s", code)
+            return None
+        soup = _fetch_soup(session, settlement_url)
+        LOGGER.info("fetched settlement soup url=%s code=%s", settlement_url, code)
         return soup
     finally:
         session.close()
@@ -345,6 +556,11 @@ def scrape_irbank(
         for rule in extractors.values()
     ):
         context["performance_soup"] = fetch_performance_soup(code)
+    if any(
+        isinstance(rule, dict) and rule.get("type") == "safty_series"
+        for rule in extractors.values()
+    ):
+        context["settlement_soup"] = fetch_settlement_soup(code)
     for field_name in extractors:
         _resolve_field_value(
             field_name=field_name,
