@@ -1,5 +1,5 @@
 {
-  "in": "4272",
+  "in": "5401",
   "extractors": {
     "売上高": {
       "type": "performance_series",
